@@ -3,6 +3,10 @@ from cxotime import CxoTime
 import acispy
 import matplotlib.pyplot as plt
 from pathlib import Path
+import smtplib
+from email.message import EmailMessage
+
+outdir = Path('/proj/web-cxc/htdocs/acis/cr_fp_plots')
 
 tstart = CxoTime("2021:100:00:00:00")
 tstop = CxoTime()
@@ -11,13 +15,20 @@ rzs = rad_zones.filter(start=tstart, stop=tstop)
 
 ds = acispy.EngArchiveData(tstart, tstop, ["1crat", "1crbt", "fptemp_11", "earth_solid_angle"])
 
+last_time = max(ds["fptemp_11"].times[-1].value, 
+                ds["1crat"].times[-1].value, 
+                ds["1crbt"].times[-1].value)
+
 plt.rc("axes", linewidth=2)
 fns = []
 news = []
 for rz in rzs:
+    if last_time < rz.tstart or rz.tstart < last_time < rz.tstop:
+        continue
     fn = f"{rz.start[:11].replace(':', '_')}_{rz.start[:11].replace(':', '_')}.png"
+    fn = outdir / fn
     fns.append(fn)
-    if Path(fn).exists():
+    if fn.exists():
         news.append(False)
     else:
         fptemp = ds["fptemp_11"][rz.start:rz.stop]
@@ -58,10 +69,11 @@ outlines = [
     "<ul>\n",
 ]
 for new, fn in zip(news, fns):
-    words = fn.split(".")[0].split("_")
+    f = fn.name
+    words = f.split(".")[0].split("_")
     newstr = "<font color=\"red\">NEW!</font>" if new else ""
     outlines += [
-        f"<li><a href=\"{fn}\">{':'.join(words[0:3])}</a> {newstr}</li>\n",
+        f"<li><a href=\"{f}\">{':'.join(words[0:3])}</a> {newstr}</li>\n",
         "<p />\n"
     ]
 outlines += [
@@ -70,9 +82,20 @@ outlines += [
     "</html>"
 ]
 
-with open("index.html", "w") as f:
+with open(outdir / "index.html", "w") as f:
     f.writelines(outlines)
 
+if any(news):
 
+    email_txt = "A new plot showing the ACIS FP and Cold Radiator Temperatures from "
+    email_txt += "the last perigee has appeared at https://cxc.cfa.harvard.edu/acis/cr_fp_plots."
 
+    msg = EmailMessage()
+    msg['Subject'] = "ACIS FP and Cold Radiator Temperatures from the last Perigee"
+    msg['From'] = "john.zuhone@cfa.harvard.edu"
+    msg['To'] = "john.zuhone@cfa.harvard.edu"
+    msg.set_content(email_txt)
+
+    with smtplib.SMTP('localhost') as s:
+        s.send_message(msg)
 
